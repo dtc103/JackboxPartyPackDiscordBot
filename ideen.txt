@@ -3,7 +3,6 @@
 Warteschlange:
 
 -mehrere Warteschlangen, mit eigenen individuellen Namen, denen man dann beitreten kann
-    -kanalname, soll nachher dem warteschlangennamen entsprechen
     -warnung ausgeben, wenn in der queue noch keiner drin ist, der (laut serverrolle) das spiel besitzt
     -leute nach x minuten entfernen aus der warteshclange
 -wenn jemand aus einer queue in die andere queue wechseln will, kann er das nur machen, wenn der ersteller der queue, mit einem haken oder kreuz reagiert

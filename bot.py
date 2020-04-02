@@ -21,9 +21,17 @@ DEFAULT_QUEUE_MINIMUM_REQ = 2
 
 # client = discord.Client()
 bot = commands.Bot(command_prefix="!")
+bot.remove_command("help")
 
 # maximum amount of jackbox voicechannels
 maximum_channel_number = 20
+# maximum size of one jackbox voicechannel
+maximum_channel_size = 16
+# minimum size of one jackbox voicechannel
+minimum_channel_size = 2
+
+# the maximum amount of seconds a user should be in a queue
+max_user_livetime = 60*30  # 30 mins
 
 wtp_queues = []
 
@@ -41,6 +49,10 @@ class QueueUser:
 
 
 class IndividQueue:
+    FULL = 2
+    NOTFULL = 1
+    EMPTY = 0
+
     def __init__(self, originator: QueueUser, queue_name: str, min_req: int):
         self.userlist = []
         if originator is not None:
@@ -54,6 +66,14 @@ class IndividQueue:
 
     def remove(self, queue_user: QueueUser):
         self.userlist.remove(queue_user)
+
+    def status(self):
+        if len(self.userlist) == 0:
+            return IndividQueue.EMPTY
+        elif len(self.userlist) < self.min_req:
+            return IndividQueue.NOTFULL
+        elif len(self.userlist) == self.min_req:
+            return IndividQueue.FULL
 
     def __len__(self):
         return len(self.userlist)
@@ -86,17 +106,27 @@ def get_current_jackbox_vcs():
 
 
 # FIXME dont forget that I subtracted the deltatime of 2 hrs, to get the same time, as the discord UI
-async def manage_channels():
+async def manage_channels(refreshrate_sec: int):
     while not bot.is_closed():
         jack_calls = get_current_jackbox_vcs()
         for vc in jack_calls:
             if vc.name == "jackbox 1" or vc.name == "jackbox 2":
                 continue
             else:
-                if len(vc.members) == 0 and (vc.created_at + datetime.timedelta(seconds=10) < datetime.datetime.now() - datetime.timedelta(hours=2)):
+                if len(vc.members) == 0 and (vc.created_at + datetime.timedelta(minutes=10) < datetime.datetime.now() - datetime.timedelta(hours=2)):
                     await vc.delete(reason="Empty")
+        await update_queue_user(refreshrate_sec)
+        await asyncio.sleep(refreshrate_sec)
 
-        await asyncio.sleep(2)
+
+async def update_queue_user(time_to_add: int):
+    for queue in wtp_queues:
+        for queue_user in queue.userlist:
+            queue_user.livetime += time_to_add
+            if queue_user.livetime > max_user_livetime:
+                queue.remove(queue_user)
+        if queue.status() == IndividQueue.EMPTY and queue.name != DEFAULT_QUEUE:
+            wtp_queues.remove(queue)
 
 
 def queue_name_is_valid(channelname: str):
@@ -125,16 +155,12 @@ def get_queue(queue_name: str):
 
     return None
 
-# adds a user to a exisitng queue
-
 
 def add_user_to_queue(member: discord.Member, queuename: str):
     queue = get_queue(queuename)
     new_user = QueueUser(member, queue)
     queue.append(new_user)
     return queue
-
-# creates a new queue and adds the originator to it
 
 
 def add_queue(originator: discord.Member, queuename: str, min_req: int):
@@ -143,21 +169,6 @@ def add_queue(originator: discord.Member, queuename: str, min_req: int):
     new_originator.queue = queue
     wtp_queues.append(queue)
     return queue
-
-# checks if a queue has enough member to create a party
-
-
-def queue_is_full(queuename):
-    if isinstance(queuename, IndividQueue):
-        return len(queuename) >= queuename.min_req
-    elif isinstance(queuename, str):
-        queue = get_queue(queuename)
-        if len(queue) >= queue.min_req:
-            return True
-        else:
-            return False
-
-# create the response message, if the queue is full
 
 
 def queue_full_response(queue: IndividQueue):
@@ -203,7 +214,7 @@ def get_smallest_available_channelnumber():
 async def on_ready():
     wtp_queues.append(IndividQueue(
         None, DEFAULT_QUEUE, DEFAULT_QUEUE_MINIMUM_REQ))
-    bot.loop.create_task(manage_channels())
+    bot.loop.create_task(manage_channels(60))
     print("bot started")
 
 
@@ -247,12 +258,19 @@ async def on_command_error(ctx, error):
 @bot_command_channel("searching-for-players")
 async def want_to_play(ctx, channelname: str = None, channelsize=10):
     if len(get_current_jackbox_vcs()) >= maximum_channel_number:
-        await ctx.send(f"Sorry {ctx.author.mention}, but the maximum amount of voicechats is reached")
+        await ctx.send(f"Sorry {ctx.author.mention}, but the maximum amount of voicechats is reached, but you can try to join an existing one or try later")
         return
+
+    if channelsize > maximum_channel_size:
+        channelsize = 16
+        await ctx.send(f"Your channelsize exceeded the maximum size and was set to 16")
+    if channelsize < minimum_channel_size:
+        channelsize = 2
+        await ctx.send(f"Your channelsize is below the minimum and was set to 2")
 
     user = user_already_in_any_queue(ctx.author)
 
-    # check, if user is already in a queue
+    # check, if user is already in any queue
     if user is not None:
         await ctx.send(f"{ctx.author.mention} you are already in the **{user.queue.name}** queue")
         return
@@ -260,7 +278,7 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
     # check if the queue already exists
     if channelname is None:
         curr_queue = add_user_to_queue(ctx.author, DEFAULT_QUEUE)
-        if queue_is_full(curr_queue):
+        if curr_queue.status() == IndividQueue.FULL:
             current_smallest_number = get_smallest_available_channelnumber()
             await ctx.guild.create_voice_channel(f"jackbox {current_smallest_number}", category=discord.utils.find(lambda c: JACKBOX_VOICECHANNEL_CATEGORY == c.name, get_current_guild().categories), user_limit=channelsize)
             await ctx.send(queue_full_response(curr_queue))
@@ -269,19 +287,15 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
             await ctx.send(f"There are currently **{len(get_queue(DEFAULT_QUEUE))}** people waiting in **{get_queue(DEFAULT_QUEUE).name}** queue")
     else:
         opt_queue = get_queue(channelname)
-        print("got queue")
         if opt_queue is None:
             add_queue(ctx.author, channelname, channelsize)
             await ctx.send(f"{ctx.author.mention} created the queue: **{channelname}**. Feel free to join!")
         else:
-            print("queue has name")
             curr_queue = add_user_to_queue(ctx.author, channelname)
-            if queue_is_full(curr_queue):
-                print("queue full")
+            if curr_queue.status() == IndividQueue.FULL:
                 await ctx.guild.create_voice_channel(channelname, category=discord.utils.find(lambda c: JACKBOX_VOICECHANNEL_CATEGORY == c.name, get_current_guild().categories), user_limit=channelsize)
                 await ctx.send(queue_full_response(curr_queue))
                 delete_queue(curr_queue)
-                print("queue is full and function is finished")
             else:
                 await ctx.send(f"There are currently **{len(get_queue(channelname))}** people waiting in the **{get_queue(channelname).name}** queue")
 
@@ -289,22 +303,30 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
 @bot.command(name="wtp-info", help="show the number of people, currently searching for players")
 @bot_command_channel("searching-for-players")
 async def want_to_play_info(ctx, queue_name: str = None):
-    reply_message = ""
-    if(len(wtp_player_list) == 1):
-        reply_message += f"```This {len(wtp_player_list)} player is currently waiting for more people:\n"
-    else:
-        reply_message += f"```These {len(wtp_player_list)} players are currently waiting for more people:\n"
-    for player in wtp_player_list:
-        reply_message += player.name + "\n"
-    reply_message += "```"
-    await ctx.send(reply_message)
+
+    pass
 
 
 @bot.command(name="wtp-leave", help="leave the current queue")
 @bot_command_channel("searching-for-players")
 async def leave_queue(ctx):
-    if ctx.author in wtp_player_list:
-        wtp_all_queue_members.remove(ctx.author)
+    user = user_already_in_any_queue(ctx.author)
+    if user is not None:
+        user.queue.remove(user)
+        if user.queue.status() == IndividQueue.EMPTY and user.queue.name != DEFAULT_QUEUE:
+            wtp_queues.remove(user.queue)
+        user.queue = None
 
+
+@bot.command(name="help")
+async def help(ctx):
+    # embed = discord.Embed(colour=discord.Colour.gold())
+    # embed.set_author(name="Help table")
+    # embed.add_field(name="", value="uwusback", inline=True)
+    # embed.add_field(name="", value="asdf", inline=True)
+    # embed.add_field(name="", value="owoes", inline=False)
+    # embed.description = "description"
+    # await ctx.author.send(embed=embed)
+    await ctx.author.send("heyho my cuddly wuddly bear. Can y-you p-p-please take my v-virginity??? nyaaa~~~")
 
 bot.run(TOKEN)

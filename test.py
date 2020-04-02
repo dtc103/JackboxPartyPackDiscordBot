@@ -2,5 +2,12 @@ import datetime
 from datetime import timedelta, datetime, timezone
 import time
 
-now = datetime.now()
-print(now.utcoffset())
+
+class test:
+    var = 1
+
+    def ret(self):
+        return test.var
+
+
+print(test.var)

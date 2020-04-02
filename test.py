@@ -1,13 +1,14 @@
-import datetime
-from datetime import timedelta, datetime, timezone
-import time
+import dotenv
+from dotenv import load_dotenv
+import os
 
+import discord
+from discord.ext import commands
 
-class test:
-    var = 1
+load_dotenv()
 
-    def ret(self):
-        return test.var
+TOKEN = os.getenv('DISCORD_TOKEN')
 
+bot = commands.Bot(command_prefix='!')
 
-print(test.var)
+bot.run(TOKEN)

@@ -16,7 +16,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD = os.getenv("DISCORD_GUILD")
 WORKING_CHANNEL = os.getenv("WORKING_CHANNEL_ID")
 JACKBOX_VOICECHANNEL_CATEGORY = os.getenv("JACKBOX_VOICECHANNEL_CATEGORY")
-DEFAULT_QUEUE = os.getenv("DEFAULT_QUEUE")
+DEFAULT_QUEUE_NAME = os.getenv("DEFAULT_QUEUE_NAME")
 DEFAULT_QUEUE_MINIMUM_REQ = 2
 
 # client = discord.Client()
@@ -125,12 +125,12 @@ async def update_queue_user(time_to_add: int):
             queue_user.livetime += time_to_add
             if queue_user.livetime > max_user_livetime:
                 queue.remove(queue_user)
-        if queue.status() == IndividQueue.EMPTY and queue.name != DEFAULT_QUEUE:
+        if queue.status() == IndividQueue.EMPTY and queue.name != DEFAULT_QUEUE_NAME:
             wtp_queues.remove(queue)
 
 
 def queue_name_is_valid(channelname: str):
-    if re.match("jackbox \d+", channelname.lower()) or channelname.lower() == "default" or channelname == DEFAULT_QUEUE:
+    if re.match(r"jackbox \d+", channelname.lower()) or channelname.lower() == DEFAULT_QUEUE_NAME.lower():
         return False
     else:
         return True
@@ -146,7 +146,7 @@ def user_already_in_any_queue(queue_user_to_check: discord.Member):
 
 
 def get_queue(queue_name: str):
-    if queue_name == DEFAULT_QUEUE:
+    if queue_name == DEFAULT_QUEUE_NAME:
         return wtp_queues[0]
 
     for queue in wtp_queues:
@@ -173,7 +173,7 @@ def add_queue(originator: discord.Member, queuename: str, min_req: int):
 
 def queue_full_response(queue: IndividQueue):
     response = "Hey "
-    for index, queue_user in enumerate(queue.userlist):
+    for queue_user in queue.userlist:
         response += f"{queue_user.member.mention}, "
 
     response += "finally you are enough players for a new party. Have fun!!!"
@@ -189,7 +189,7 @@ def get_smallest_available_channelnumber():
     vcs = get_current_jackbox_vcs()
     channelnumbers = []
     for vc in vcs:
-        groups = re.match("jackbox (\d+)", vc.name.lower())
+        groups = re.match(r"jackbox (\d+)", vc.name.lower())
         channelnumbers.append(int(groups.group(1)))
 
     channelnumbers.sort()
@@ -213,7 +213,7 @@ def get_smallest_available_channelnumber():
 @bot.event
 async def on_ready():
     wtp_queues.append(IndividQueue(
-        None, DEFAULT_QUEUE, DEFAULT_QUEUE_MINIMUM_REQ))
+        None, DEFAULT_QUEUE_NAME, DEFAULT_QUEUE_MINIMUM_REQ))
     bot.loop.create_task(manage_channels(60))
     print("bot started")
 
@@ -277,19 +277,23 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
 
     # check if the queue already exists
     if channelname is None:
-        curr_queue = add_user_to_queue(ctx.author, DEFAULT_QUEUE)
+        curr_queue = add_user_to_queue(ctx.author, DEFAULT_QUEUE_NAME)
         if curr_queue.status() == IndividQueue.FULL:
             current_smallest_number = get_smallest_available_channelnumber()
             await ctx.guild.create_voice_channel(f"jackbox {current_smallest_number}", category=discord.utils.find(lambda c: JACKBOX_VOICECHANNEL_CATEGORY == c.name, get_current_guild().categories), user_limit=channelsize)
             await ctx.send(queue_full_response(curr_queue))
             curr_queue.userlist.clear()
         else:
-            await ctx.send(f"There are currently **{len(get_queue(DEFAULT_QUEUE))}** people waiting in **{get_queue(DEFAULT_QUEUE).name}** queue")
+            await ctx.send(f"There are currently **{len(get_queue(DEFAULT_QUEUE_NAME))}** people waiting in **{get_queue(DEFAULT_QUEUE_NAME).name}** queue")
     else:
-        opt_queue = get_queue(channelname)
+        opt_queue = get_queue(channelname.lower())
         if opt_queue is None:
-            add_queue(ctx.author, channelname, channelsize)
-            await ctx.send(f"{ctx.author.mention} created the queue: **{channelname}**. Feel free to join!")
+            if queue_name_is_valid(channelname):
+                add_queue(ctx.author, channelname, channelsize)
+                await ctx.send(f"{ctx.author.mention} created the queue: **{channelname}**. Feel free to join!")
+            else:
+                await ctx.send(f"Sorry {ctx.author.mention}, but the channelname **{channelname}** is not allowed")
+                return 
         else:
             curr_queue = add_user_to_queue(ctx.author, channelname)
             if curr_queue.status() == IndividQueue.FULL:
@@ -303,30 +307,59 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
 @bot.command(name="wtp-info", help="show the number of people, currently searching for players")
 @bot_command_channel("searching-for-players")
 async def want_to_play_info(ctx, queue_name: str = None):
-
-    pass
+    response = "```"
+    response += "The following queues are currently available\n\n"
+    for index, queue in enumerate(wtp_queues):
+        response += f"{index + 1}. {queue.name}:\n"
+        for user in queue.userlist:
+            response += f"{user.member.name}\n"
+        response += f"waiting for {queue.min_req - len(queue)} more people to start\n\n"
+    response += "```"
+    await ctx.send(response)
 
 
 @bot.command(name="wtp-leave", help="leave the current queue")
 @bot_command_channel("searching-for-players")
 async def leave_queue(ctx):
+
     user = user_already_in_any_queue(ctx.author)
     if user is not None:
         user.queue.remove(user)
-        if user.queue.status() == IndividQueue.EMPTY and user.queue.name != DEFAULT_QUEUE:
+        if user.queue.status() == IndividQueue.EMPTY and user.queue.name != DEFAULT_QUEUE_NAME:
             wtp_queues.remove(user.queue)
         user.queue = None
 
 
 @bot.command(name="help")
 async def help(ctx):
-    # embed = discord.Embed(colour=discord.Colour.gold())
-    # embed.set_author(name="Help table")
-    # embed.add_field(name="", value="uwusback", inline=True)
-    # embed.add_field(name="", value="asdf", inline=True)
-    # embed.add_field(name="", value="owoes", inline=False)
-    # embed.description = "description"
-    # await ctx.author.send(embed=embed)
-    await ctx.author.send("heyho my cuddly wuddly bear. Can y-you p-p-please take my v-virginity??? nyaaa~~~")
+    embed = discord.Embed(colour=discord.Colour.gold())
+    embed.set_author(
+        name="Help table"
+    )
+    embed.add_field(
+        name="wtp-help", 
+        value="shows a table with all commands", 
+        inline=False
+    )
+    embed.add_field(
+        name="<font color=\"red\">This</font></HTML>", 
+        value="""
+            wtp: enter a waiting queue
+            wtp [queuename]: joins a queue with the name [queuename] or creates a new one if not existing
+            wtp [queuename] [queuelength]: create a new queue with [queuename] and a maximal size of [queuelength].
+        """, 
+        inline=False
+    )
+    embed.add_field(
+        name="wtp-leave", 
+        value="leaves a queue, if already in one", 
+        inline=False
+    )
+    embed.add_field(
+        name="wtp-info", 
+        value="shows information about existing queues and personal belongings"
+    )
+    embed.description = ""
+    await ctx.author.send(embed=embed)
 
 bot.run(TOKEN)

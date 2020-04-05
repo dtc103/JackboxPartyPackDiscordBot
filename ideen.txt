@@ -4,8 +4,15 @@ Warteschlange:
 
 -mehrere Warteschlangen, mit eigenen individuellen Namen, denen man dann beitreten kann
     -warnung ausgeben, wenn in der queue noch keiner drin ist, der (laut serverrolle) das spiel besitzt
-    - wenn man channelsize selber angibt, muss ein bestimmter prozentsatz des maximums vorhanden sein, um die schlange zu erstellen
 -infobefehl erweitern, der anzeigt, wie viele queues es gibt, in welcher man selber ist und wie viele Leute fehlen
--wenn leave und default queue->nicht leaven
 
 checken, dass befehl nicht aus einem dm kommt
+
+
+
+
+
+
+
+Darksouls wikibot
+abstimmbot

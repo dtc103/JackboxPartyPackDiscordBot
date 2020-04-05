@@ -59,7 +59,11 @@ class IndividQueue:
             self.userlist.append(originator)
         self.originator = originator
         self.name = queue_name
-        self.min_req = min_req
+
+        if min_req >= 4:
+            self.min_req = int(min_req / 2)
+        else:
+            self.min_req = min_req
 
     def append(self, queue_user: QueueUser):
         self.userlist.append(queue_user)
@@ -293,7 +297,6 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
                 await ctx.send(f"{ctx.author.mention} created the queue: **{channelname}**. Feel free to join!")
             else:
                 await ctx.send(f"Sorry {ctx.author.mention}, but the channelname **{channelname}** is not allowed")
-                return 
         else:
             curr_queue = add_user_to_queue(ctx.author, channelname)
             if curr_queue.status() == IndividQueue.FULL:
@@ -321,7 +324,6 @@ async def want_to_play_info(ctx, queue_name: str = None):
 @bot.command(name="wtp-leave", help="leave the current queue")
 @bot_command_channel("searching-for-players")
 async def leave_queue(ctx):
-
     user = user_already_in_any_queue(ctx.author)
     if user is not None:
         user.queue.remove(user)
@@ -329,7 +331,7 @@ async def leave_queue(ctx):
             wtp_queues.remove(user.queue)
         user.queue = None
 
-
+# TODO help command has to be send by DM
 @bot.command(name="help")
 async def help(ctx):
     embed = discord.Embed(colour=discord.Colour.gold())
@@ -337,26 +339,26 @@ async def help(ctx):
         name="Help table"
     )
     embed.add_field(
-        name="wtp-help", 
-        value="shows a table with all commands", 
+        name="wtp-help",
+        value="shows a table with all commands",
         inline=False
     )
     embed.add_field(
-        name="<font color=\"red\">This</font></HTML>", 
+        name="<font color=\"red\">This</font></HTML>",
         value="""
             wtp: enter a waiting queue
             wtp [queuename]: joins a queue with the name [queuename] or creates a new one if not existing
             wtp [queuename] [queuelength]: create a new queue with [queuename] and a maximal size of [queuelength].
-        """, 
+        """,
         inline=False
     )
     embed.add_field(
-        name="wtp-leave", 
-        value="leaves a queue, if already in one", 
+        name="wtp-leave",
+        value="leaves a queue, if already in one",
         inline=False
     )
     embed.add_field(
-        name="wtp-info", 
+        name="wtp-info",
         value="shows information about existing queues and personal belongings"
     )
     embed.description = ""

@@ -101,6 +101,16 @@ def bot_command_channel(channel="searching-for-players"):
     return commands.check(wrapper_for_check)
 
 
+def not_in_dms():
+    async def wrapper_for_check(ctx, *args):
+        print(ctx.guild)
+        if ctx.guild == None:
+            return False
+        return True
+
+    return commands.check(wrapper_for_check)
+
+
 def get_current_guild():
     return discord.utils.find(lambda g: GUILD == g.name, bot.guilds)
 
@@ -258,7 +268,8 @@ async def on_command_error(ctx, error):
     print(f"Seems like the command was wrong: {error}")
 
 
-@bot.command(name="wtp", help="Searching for some companions to play with.\n Usage... ")
+@bot.command(name="wtp")
+@not_in_dms()
 @bot_command_channel("searching-for-players")
 async def want_to_play(ctx, channelname: str = None, channelsize=10):
     if len(get_current_jackbox_vcs()) >= maximum_channel_number:
@@ -307,7 +318,7 @@ async def want_to_play(ctx, channelname: str = None, channelsize=10):
                 await ctx.send(f"There are currently **{len(get_queue(channelname))}** people waiting in the **{get_queue(channelname).name}** queue")
 
 
-@bot.command(name="wtp-info", help="show the number of people, currently searching for players")
+@bot.command(name="wtp-info")
 @bot_command_channel("searching-for-players")
 async def want_to_play_info(ctx, queue_name: str = None):
     response = "```"
@@ -321,7 +332,7 @@ async def want_to_play_info(ctx, queue_name: str = None):
     await ctx.send(response)
 
 
-@bot.command(name="wtp-leave", help="leave the current queue")
+@bot.command(name="wtp-leave")
 @bot_command_channel("searching-for-players")
 async def leave_queue(ctx):
     user = user_already_in_any_queue(ctx.author)
@@ -329,10 +340,13 @@ async def leave_queue(ctx):
         user.queue.remove(user)
         if user.queue.status() == IndividQueue.EMPTY and user.queue.name != DEFAULT_QUEUE_NAME:
             wtp_queues.remove(user.queue)
+        await ctx.send(f"**{ctx.author}** left the {user.queue} queue")
         user.queue = None
+
 
 # TODO help command has to be send by DM
 @bot.command(name="help")
+@not_in_dms()
 async def help(ctx):
     embed = discord.Embed(colour=discord.Colour.gold())
     embed.set_author(
@@ -363,5 +377,6 @@ async def help(ctx):
     )
     embed.description = ""
     await ctx.author.send(embed=embed)
+    await ctx.send(f"{ctx.author.mention}, DM sent")
 
 bot.run(TOKEN)

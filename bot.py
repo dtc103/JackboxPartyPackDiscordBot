@@ -10,6 +10,10 @@ import datetime
 from dotenv import load_dotenv
 from discord.ext import commands, tasks
 
+from timedQueue import QueueUser, TimedQueue
+
+from helper_functions import *
+
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -36,70 +40,7 @@ max_user_livetime = 60*30  # 30 mins
 wtp_queues = []
 
 
-################# CLASSES #####################
-
-class QueueUser:
-    def __init__(self, member, queue):
-        self.member = member
-        self.queue = queue
-        self.livetime = 0
-
-    def __eq__(self, other):
-        return self.member == other.member
-
-
-class IndividQueue:
-    FULL = 2
-    NOTFULL = 1
-    EMPTY = 0
-
-    def __init__(self, originator: QueueUser, queue_name: str, min_req: int):
-        self.userlist = []
-        if originator is not None:
-            self.userlist.append(originator)
-        self.originator = originator
-        self.name = queue_name
-
-        if min_req >= 4:
-            self.min_req = int(min_req / 2)
-        else:
-            self.min_req = min_req
-
-    def append(self, queue_user: QueueUser):
-        self.userlist.append(queue_user)
-
-    def remove(self, queue_user: QueueUser):
-        self.userlist.remove(queue_user)
-
-    def status(self):
-        if len(self.userlist) == 0:
-            return IndividQueue.EMPTY
-        elif len(self.userlist) < self.min_req:
-            return IndividQueue.NOTFULL
-        elif len(self.userlist) == self.min_req:
-            return IndividQueue.FULL
-
-    def __len__(self):
-        return len(self.userlist)
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-
 ##################### HELPER FUNCTIONS ###########################
-
-def bot_command_channel(channel="searching-for-players"):
-    async def wrapper_for_check(ctx, *args):
-        if ctx.message.channel.name != channel:
-            await ctx.send(f"{ctx.message.author.mention}, this botcommand belongs into {discord.utils.find(lambda c: channel == c.name, ctx.message.guild.channels).mention}", delete_after=20)
-            await ctx.message.delete(delay=20)
-
-            return False
-        else:
-            return True
-
-    return commands.check(wrapper_for_check)
-
 
 def not_in_dms():
     async def wrapper_for_check(ctx, *args):
